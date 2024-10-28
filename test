@@ -1,0 +1,109 @@
+import cv2
+import numpy as np
+import mss
+from PIL import Image
+import tkinter as tk
+from tkinter import messagebox
+from skimage.metrics import structural_similarity as compare_ssim
+import argparse
+import imutils
+a=0
+class SnipTool:
+    def __init__(self, root):
+        self.root = root
+        self.excel_path = None
+        self.create_widgets()
+
+    def create_widgets(self):
+        self.root.title("写真の比較")
+        self.root.geometry("400x300")
+
+        # Nút chọn file Excel
+        self.create_file_btn = tk.Button(self.root, text="キャプチャー", command=self.capture_screenshot)
+        self.create_file_btn.pack(pady=10)
+
+        # Nút chọn file Excel
+        self.select_file_btn = tk.Button(self.root, text="比較", command=self.hikaku)
+        self.select_file_btn.pack(pady=10)
+        # Nút chọn file Excel
+        self.reset_file_btn = tk.Button(self.root, text="reset", command=self.reset)
+        self.reset_file_btn.pack(pady=10)
+    def reset(self):
+        global a
+        a=0
+    def capture_screenshot(self):
+        global a
+        left = 700 # X coordinate of the top-left corner
+        top = 0  # Y coordinate of the top-left corner
+        #screen 1: 1920x1080
+        width = 900  # Width of the screenshot area 
+        height = 900  # Height of the screenshot area
+        a = a+1
+        output_file = f"screenshot{a}.png"
+       
+        # Define the region to capture
+        region = {'left': left, 'top': top, 'width': width, 'height': height}
+        
+        # Capture the screenshot
+        with mss.mss() as sct:
+            screenshot = sct.grab(region)
+        
+        # Convert the screenshot to an image object
+        img = Image.frombytes('RGB', (screenshot.width, screenshot.height), screenshot.rgb)
+        
+        # Save the image
+        img.save(output_file)
+        print(f"Screenshot saved as {output_file}")
+        messagebox.showinfo("報告", f"キャプチャー完了")
+    def hikaku(self):
+        # Đọc 2 ảnh
+        img1 = cv2.imread('kyuhan1.png') # tra ve anh gray
+        img2 = cv2.imread('shinki1.png') # tra ve anh gray
+        # Lấy kích thước của hai ảnh
+        h1, w1 = img1.shape[:2]
+        h2, w2 = img2.shape[:2]
+        # Kiểm tra nếu kích thước của hai ảnh giống nhau
+        if img1.shape != img2.shape:
+            raise ValueError("Hai ảnh phải có cùng kích thước để so sánh.")
+        # convert the images to grayscale
+        grayA = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
+        grayB = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
+        # compute the Structural Similarity Index (SSIM) between the two
+        # images, ensuring that the difference image is returned
+        (score, diff) = compare_ssim(grayA, grayB, full=True)
+        diff = (diff * 255).astype("uint8")
+        print("SSIM: {}".format(score))
+        # threshold the difference image, followed by finding contours to
+        # obtain the regions of the two input images that differ
+        thresh = cv2.threshold(diff, 0, 255,
+            cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
+        cnts = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL,
+            cv2.CHAIN_APPROX_SIMPLE)
+        cnts = imutils.grab_contours(cnts)
+        # loop over the contours
+        for c in cnts:
+            # compute the bounding box of the contour and then draw the
+            # bounding box on both input images to represent where the two
+            # images differ
+            (x, y, w, h) = cv2.boundingRect(c)
+            cv2.rectangle(img1, (x, y), (x + w, y + h), (0, 0, 255), 2)
+            cv2.rectangle(img2, (x, y), (x + w, y + h), (0, 0, 255), 2)
+        # show the output images
+        width = img1.width + img2.width
+        height = max(img1.height, img2.height)
+        combined_image_horizontal = Image.new("RGB", (width, height))
+
+        # Dán ảnh vào
+        combined_image_horizontal.paste(img1, (0, 0))
+        combined_image_horizontal.paste(img2, (img1.width, 0))
+
+        # Lưu ảnh gộp ngang
+        combined_image_horizontal.save("combined_horizontal.png")
+        cv2.imshow("Original", img1)
+        cv2.imshow("Modified", img2)
+        cv2.waitKey(0)
+    
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = SnipTool(root)
+    root.mainloop()
