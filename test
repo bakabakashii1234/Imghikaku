@@ -7,6 +7,9 @@ from tkinter import messagebox
 from skimage.metrics import structural_similarity as compare_ssim
 import argparse
 import imutils
+from openpyxl.drawing.image import Image as XLImage
+import openpyxl
+
 a=0
 class SnipTool:
     def __init__(self, root):
@@ -25,9 +28,15 @@ class SnipTool:
         # Nút chọn file Excel
         self.select_file_btn = tk.Button(self.root, text="比較", command=self.hikaku)
         self.select_file_btn.pack(pady=10)
+                # Nút chọn file Excel
+        self.converter_btn = tk.Button(self.root, text="converter", command=self.converter)
+        self.converter_btn.pack(pady=10)
+
         # Nút chọn file Excel
         self.reset_file_btn = tk.Button(self.root, text="reset", command=self.reset)
         self.reset_file_btn.pack(pady=10)
+
+
     def reset(self):
         global a
         a=0
@@ -88,20 +97,27 @@ class SnipTool:
             (x, y, w, h) = cv2.boundingRect(c)
             cv2.rectangle(img1, (x, y), (x + w, y + h), (0, 0, 255), 2)
             cv2.rectangle(img2, (x, y), (x + w, y + h), (0, 0, 255), 2)
-        # show the output images
-        width = img1.width + img2.width
-        height = max(img1.height, img2.height)
-        combined_image_horizontal = Image.new("RGB", (width, height))
-
-        # Dán ảnh vào
-        combined_image_horizontal.paste(img1, (0, 0))
-        combined_image_horizontal.paste(img2, (img1.width, 0))
-
-        # Lưu ảnh gộp ngang
-        combined_image_horizontal.save("combined_horizontal.png")
+        cv2.imwrite("img1-out.png", img1)
+        cv2.imwrite("img2-out.png", img2)
         cv2.imshow("Original", img1)
         cv2.imshow("Modified", img2)
         cv2.waitKey(0)
+    def converter(self):
+
+        # Mở hai ảnh
+        image1 = Image.open("img1-out.png")
+        image2 = Image.open("img2-out.png")
+        # show the output images
+        width = image1.width + image2.width
+        height = max(image1.height, image2.height)
+        combined_image_horizontal = Image.new("RGB", (width, height))
+
+        # Dán ảnh vào
+        combined_image_horizontal.paste(image1, (0, 0))
+        combined_image_horizontal.paste(image2, (image1.width, 0))
+
+        # Lưu ảnh gộp ngang
+        combined_image_horizontal.save("combined_horizontal.png")
     
 if __name__ == "__main__":
     root = tk.Tk()
