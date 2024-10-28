@@ -1,0 +1,130 @@
+import tkinter as tk
+from tkinter import messagebox
+from tkinter import filedialog
+import fitz  # PyMuPDF
+import cv2
+from skimage.metrics import structural_similarity as compare_ssim #thư viện pip install scikit-image
+import imutils
+from PIL import Image
+class SnipTool:
+    def __init__(self, root):
+        self.root = root
+        self.excel_path = None
+        self.create_widgets()
+
+    def create_widgets(self):
+        self.root.title("写真の比較")
+        self.root.geometry("450x150")
+
+        # Label và Entry và Button cho tên 旧版
+        self.bancu_link_label = tk.Label(self.root, text = "旧版-Link")
+        self.bancu_link_label.grid(row = 0, column=0, padx= 5, pady=5)
+
+        self.bancu_link_entry = tk.Entry(self.root, width=50)
+        self.bancu_link_entry.grid(row = 0, column=1, padx= 5, pady=5)
+    
+        self.bancu_link_button = tk.Button(self.root, text="旧版", command= self.select_bancu_file)
+        self.bancu_link_button.grid(row = 0, column=2, padx= 5, pady=5)
+
+        # Label và Entry và Button cho tên 新規
+        self.banmoi_link_label = tk.Label(self.root, text = "新規-Link")
+        self.banmoi_link_label.grid(row = 1, column=0, padx= 5, pady=5)
+
+        self.banmoi_link_entry = tk.Entry(self.root, width=50)
+        self.banmoi_link_entry.grid(row = 1, column=1, padx= 5, pady=5)
+        
+        self.banmoi_link_button = tk.Button(self.root, text="新規", command=self.select_banmoi_file)
+        self.banmoi_link_button.grid(row = 1, column=2, padx= 5, pady=5)
+
+        #so sánh
+        self.banmoi_link_button = tk.Button(self.root, text="比較", command=self.compare_images)
+        self.banmoi_link_button.grid(row = 2, column=1, padx= 5, pady=5)
+        #quit
+        self.thoat_button = tk.Button(self.root, text = "完了", command=self.root.quit)
+        self.thoat_button.grid(row = 3, column=1, padx= 5, pady=5)
+    def select_bancu_file(self):
+        file_path = filedialog.askopenfilename(
+            filetypes=[("PDF files", "*.pdf")],
+            title="Chọn file PDF"
+        )
+        if file_path:
+            self.pdf_path1 = file_path
+            self.bancu_link_entry.delete(0, tk.END)
+            self.bancu_link_entry.insert(0, file_path)
+            self.convert_pdf2image(self.pdf_path1, "kyuhan")
+    def select_banmoi_file(self):
+        file_path = filedialog.askopenfilename(
+            filetypes=[("PDF files", "*.pdf")],
+            title="Chọn file PDF"
+        )
+        if file_path:
+            self.pdf_path2 = file_path
+            self.banmoi_link_entry.delete(0, tk.END)
+            self.banmoi_link_entry.insert(0, file_path)
+            self.convert_pdf2image(self.pdf_path2, "shinki")
+
+    def convert_pdf2image(self, pdf_path, prefix):
+        """Converts each page of a PDF to an image file with the specified prefix."""
+        doc = fitz.open(pdf_path)
+        for page_num in range(doc.page_count):
+            page = doc[page_num]
+            pix = page.get_pixmap()
+            pix.save(f"{prefix}{page_num + 1}.png")
+        doc.close()
+    def compare_images(self):
+        doc = fitz.open(self.pdf_path1)
+        for page_num in range(doc.page_count):
+                # Đọc 2 ảnh
+            img1 = cv2.imread(f'kyuhan{page_num+1}.png') # tra ve anh gray
+            img2 = cv2.imread(f'shinki{page_num+1}.png') # tra ve anh gray
+            # Lấy kích thước của hai ảnh
+            h1, w1 = img1.shape[:2]
+            h2, w2 = img2.shape[:2]
+            # Kiểm tra nếu kích thước của hai ảnh giống nhau
+            if img1.shape != img2.shape:
+                raise ValueError("Hai ảnh phải có cùng kích thước để so sánh.")
+            # convert the images to grayscale
+            grayA = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
+            grayB = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
+            # compute the Structural Similarity Index (SSIM) between the two
+            # images, ensuring that the difference image is returned
+            (score, diff) = compare_ssim(grayA, grayB, full=True)
+            diff = (diff * 255).astype("uint8")
+            print("SSIM: {}".format(score))
+            # threshold the difference image, followed by finding contours to
+            # obtain the regions of the two input images that differ
+            thresh = cv2.threshold(diff, 0, 255,
+                cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
+            cnts = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL,
+                cv2.CHAIN_APPROX_SIMPLE)
+            cnts = imutils.grab_contours(cnts)
+            # loop over the contours
+            for c in cnts:
+                # compute the bounding box of the contour and then draw the
+                # bounding box on both input images to represent where the two
+                # images differ
+                (x, y, w, h) = cv2.boundingRect(c)
+                cv2.rectangle(img1, (x, y), (x + w, y + h), (0, 0, 255), 2)
+                cv2.rectangle(img2, (x, y), (x + w, y + h), (0, 0, 255), 2)
+            cv2.imwrite(f"kyuhan-out{page_num+1}.png", img1)
+            cv2.imwrite(f"shinki-out{page_num+1}.png", img2)
+            self.merge_image(f"kyuhan-out{page_num+1}.png",f"shinki-out{page_num+1}.png",page_num+1)
+    def merge_image(self, img1, img2, count):
+        # Mở hai ảnh
+        image1 = Image.open(img1)
+        image2 = Image.open(img2)
+        # show the output images
+        width = image1.width + image2.width
+        height = max(image1.height, image2.height)
+        combined_image_horizontal = Image.new("RGB", (width, height))
+
+        # Dán ảnh vào
+        combined_image_horizontal.paste(image1, (0, 0))
+        combined_image_horizontal.paste(image2, (image1.width, 0))
+
+        # Lưu ảnh gộp ngang
+        combined_image_horizontal.save(f"combined_horizontal{count}.png")    
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = SnipTool(root)
+    root.mainloop()
