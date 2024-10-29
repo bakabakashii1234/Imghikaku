@@ -1,0 +1,137 @@
+import tkinter as tk
+from tkinter import messagebox
+from tkinter import filedialog
+import fitz  # PyMuPDF
+import cv2
+from skimage.metrics import structural_similarity as compare_ssim #thư viện pip install scikit-image
+import imutils
+from PIL import Image
+import os
+import matplotlib.pyplot as plt
+import numpy as np
+#bien cuc bo 
+image = []
+class SnipTool:
+    def __init__(self, root):
+        self.root = root
+        self.excel_path = None
+        self.create_widgets()
+
+    def create_widgets(self):
+        self.root.title("写真の比較")
+        self.root.geometry("450x150")
+        # Label và Entry và Button cho tên 旧版
+        self.bancu_link_label = tk.Label(self.root, text = "旧版-Link")
+        self.bancu_link_label.grid(row = 0, column=0, padx= 5, pady=5)
+
+        self.bancu_link_entry = tk.Entry(self.root, width=50)
+        self.bancu_link_entry.grid(row = 0, column=1, padx= 5, pady=5)
+    
+        self.bancu_link_button = tk.Button(self.root, text="旧版", command= self.select_bancu_file)
+        self.bancu_link_button.grid(row = 0, column=2, padx= 5, pady=5)
+
+        # Label và Entry và Button cho tên 新規
+        self.banmoi_link_label = tk.Label(self.root, text = "新規-Link")
+        self.banmoi_link_label.grid(row = 1, column=0, padx= 5, pady=5)
+
+        self.banmoi_link_entry = tk.Entry(self.root, width=50)
+        self.banmoi_link_entry.grid(row = 1, column=1, padx= 5, pady=5)
+        
+        self.banmoi_link_button = tk.Button(self.root, text="新規", command=self.select_banmoi_file)
+        self.banmoi_link_button.grid(row = 1, column=2, padx= 5, pady=5)
+
+        #so sánh
+        self.banmoi_link_button = tk.Button(self.root, text="比較", command=self.compare_images)
+        self.banmoi_link_button.grid(row = 2, column=1, padx= 5, pady=5)
+        #quit
+        self.thoat_button = tk.Button(self.root, text = "完了", command=self.root.quit)
+        self.thoat_button.grid(row = 3, column=1, padx= 5, pady=5)
+    def select_bancu_file(self):
+        file_path = filedialog.askopenfilename(
+            filetypes=[("PDF files", "*.pdf")],
+            title="Chọn file PDF"
+        )
+        if file_path:
+            self.pdf_path1 = file_path
+            self.bancu_link_entry.delete(0, tk.END)
+            self.bancu_link_entry.insert(0, file_path)
+            self.convert_pdf2image(self.pdf_path1, "kyuhan")
+    def select_banmoi_file(self):
+        file_path = filedialog.askopenfilename(
+            filetypes=[("PDF files", "*.pdf")],
+            title="Chọn file PDF"
+        )
+        if file_path:
+            self.pdf_path2 = file_path
+            self.banmoi_link_entry.delete(0, tk.END)
+            self.banmoi_link_entry.insert(0, file_path)
+            self.convert_pdf2image(self.pdf_path2, "shinki")
+
+    def convert_pdf2image(self, pdf_path, prefix, dpi = 300):
+        """Converts each page of a PDF to an image file with the specified prefix."""
+        doc = fitz.open(pdf_path)
+         # Tính toán tỷ lệ để chuyển đổi DPI sang ma trận
+        zoom_x = dpi / 72  # 72 là DPI mặc định
+        zoom_y = dpi / 72
+        mat = fitz.Matrix(zoom_x, zoom_y)  # Tạo ma trận với tỷ lệ zoom
+        for page_num in range(doc.page_count):
+            page = doc[page_num]
+            pix = page.get_pixmap()
+            pix.save(f"{prefix}{page_num + 1}.png")
+        doc.close()
+    def compare_images(self):
+        doc = fitz.open(self.pdf_path1)
+        for page_num in range(doc.page_count):
+                # Đọc 2 ảnh
+            img1 = cv2.imread(f'kyuhan{page_num+1}.png') 
+            img2 = cv2.imread(f'shinki{page_num+1}.png') 
+            # convert the images to grayscale
+            grayA = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
+            grayB = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
+            # compute the Structural Similarity Index (SSIM) between the two
+            # images, ensuring that the difference image is returned
+            (score, diff) = compare_ssim(grayA, grayB, full=True)
+            print(f"score: {score}")
+            if(score < 0.97):
+                diff = (diff * 255).astype("uint8")
+                # threshold the difference image, followed by finding contours to
+                # obtain the regions of the two input images that differ
+                thresh = cv2.threshold(diff, 0, 255,
+                cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
+                cnts = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL,
+                cv2.CHAIN_APPROX_SIMPLE)
+                cnts = imutils.grab_contours(cnts)
+                # loop over the contours
+                for c in cnts:
+                    # compute the bounding box of the contour and then draw the
+                    # bounding box on both input images to represent where the two
+                    # images differ
+                    (x, y, w, h) = cv2.boundingRect(c)
+                    cv2.rectangle(img1, (x, y), (x + w, y + h), (0, 0, 255), 1)
+                    cv2.rectangle(img2, (x, y), (x + w, y + h), (0, 0, 255), 1)
+            """
+            difference_map = (diff < 0.9).astype(np.uint8) * 255
+            # Tìm contour với cv2.RETR_TREE
+            contours, hierarchy = cv2.findContours(difference_map, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+            # Hiển thị thông tin cấu trúc phân cấp
+            print("Hierarchy:\n", hierarchy)
+            for i, contour in enumerate(contours):
+                # Lấy thông tin phân cấp của contour hiện tại
+                next_contour, previous_contour, child_contour, parent_contour = hierarchy[0][i]
+                    
+                # Vẽ contour
+                color = (0, 255, 0) if parent_contour == -1 else (0, 0, 255)  # contour ngoài cùng màu xanh, contour con màu đỏ
+                cv2.drawContours(img1, contours, i, color, 2)   
+                cv2.drawContours(img2, contours, i, color, 2)           
+            """
+            # Gộp ảnh theo chiều ngang
+            horizontal_concat = cv2.hconcat([img1, img2])
+            cv2.imwrite(f"merge{page_num+1}.png", horizontal_concat)
+            #xoa anh thừa
+            os.remove(f'kyuhan{page_num+1}.png')
+            os.remove(f'shinki{page_num+1}.png')
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = SnipTool(root)
+    root.mainloop()
